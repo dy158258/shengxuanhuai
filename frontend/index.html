@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>盛宣怀的客厅 · 三厂合并（1898-1908）</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-seal">盛</span>
+        <span class="brand-text">盛宣怀的客厅</span>
+        <span class="brand-sub">三厂合并 · 1898—1908</span>
+      </div>
+      <nav class="topbar-actions">
+        <button class="btn btn-ghost" id="btn-rules" title="玩法说明">玩法</button>
+        <button class="btn btn-ghost" id="btn-cast" title="角色介绍">人物</button>
+        <button class="btn btn-ghost" id="btn-history" title="历史对照">历史对照</button>
+        <button class="btn btn-ghost" id="btn-route" title="结局路线表">路线</button>
+        <button class="btn btn-solid" id="btn-save" title="保存游戏">存 档</button>
+        <button class="btn btn-solid" id="btn-load" title="读取存档">读 档</button>
+        <button class="btn btn-solid btn-danger" id="btn-new" title="新建游戏">新 建</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- 主舞台 -->
+  <main id="stage" class="stage">
+    <!-- 由 script.js 渲染 -->
+  </main>
+
+  <!-- 存档面板（弹层） -->
+  <div id="save-modal" class="modal" hidden>
+    <div class="modal-card">
+      <h2 class="modal-title" id="save-modal-title">存档</h2>
+      <div id="save-slots" class="save-slots"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-close>关 闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通用信息弹层（玩法/人物/路线） -->
+  <div id="info-modal" class="modal" hidden>
+    <div class="modal-card modal-wide">
+      <h2 class="modal-title" id="info-modal-title"></h2>
+      <div id="info-modal-body" class="info-body"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-close>关 闭</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footnote">
+    <span>纯前端 · 存档存于浏览器本地 · AI 幕僚由 Cloudflare Worker 提供（未配置时自动降级）</span>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
