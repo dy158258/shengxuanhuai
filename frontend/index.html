@@ -2,61 +2,93 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>盛宣怀的客厅 · 三厂合并（1898-1908）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>盛宣怀的客厅</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- 顶栏 -->
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <span class="brand-seal">盛</span>
-        <span class="brand-text">盛宣怀的客厅</span>
-        <span class="brand-sub">三厂合并 · 1898—1908</span>
-      </div>
-      <nav class="topbar-actions">
-        <button class="btn btn-ghost" id="btn-rules" title="玩法说明">玩法</button>
-        <button class="btn btn-ghost" id="btn-cast" title="角色介绍">人物</button>
-        <button class="btn btn-ghost" id="btn-history" title="历史对照">历史对照</button>
-        <button class="btn btn-ghost" id="btn-route" title="结局路线表">路线</button>
-        <button class="btn btn-solid" id="btn-save" title="保存游戏">存 档</button>
-        <button class="btn btn-solid" id="btn-load" title="读取存档">读 档</button>
-        <button class="btn btn-solid btn-danger" id="btn-new" title="新建游戏">新 建</button>
-      </nav>
+  <div class="app">
+    <div class="phone">
+      <!-- 顶栏 -->
+      <header class="chat-header">
+        <div class="hdr-avatar" id="hdr-avatar" title="你"></div>
+        <div class="hdr-title">
+          <div class="hdr-name" id="hdr-name">盛宣怀的客厅</div>
+          <div class="hdr-sub" id="hdr-sub">三厂合并 · 1898—1908</div>
+        </div>
+        <button class="hdr-btn" id="hdr-more" title="菜单">⋯</button>
+      </header>
+
+      <!-- 消息区 -->
+      <main class="chat-body" id="chat-body"></main>
+
+      <!-- 轻触提示 -->
+      <div class="tap-hint" id="tap-hint" hidden>轻触屏幕继续 ▾</div>
+
+      <!-- 底部操作区 -->
+      <footer class="chat-footer" id="chat-footer"></footer>
     </div>
-  </header>
+  </div>
 
-  <!-- 主舞台 -->
-  <main id="stage" class="stage">
-    <!-- 由 script.js 渲染 -->
-  </main>
+  <!-- 选角 / 标题屏 -->
+  <div id="select" class="fullscreen">
+    <div class="select-inner">
+      <div class="select-seal">盛</div>
+      <h1 class="select-title">盛宣怀的客厅</h1>
+      <div class="select-sub">三厂合并 · 1898—1908</div>
+      <p class="select-hint">选择你的角色（剧情仍按盛宣怀的历史主线推进）</p>
+      <div class="select-grid" id="select-grid"></div>
+      <div class="select-actions">
+        <button class="btn btn-primary" id="select-confirm">进入游戏</button>
+      </div>
+    </div>
+  </div>
 
-  <!-- 存档面板（弹层） -->
-  <div id="save-modal" class="modal" hidden>
+  <!-- 片头卷轴 -->
+  <div id="intro" class="fullscreen intro" hidden>
+    <div class="scroll">
+      <div class="scroll-roller scroll-roller-top"></div>
+      <div class="scroll-paper">
+        <div class="scroll-title">盛宣怀的客厅</div>
+        <div class="scroll-sub">三厂合并 · 1898—1908</div>
+        <div class="scroll-text" id="scroll-text"></div>
+      </div>
+      <div class="scroll-roller scroll-roller-bottom"></div>
+    </div>
+    <div class="intro-actions">
+      <button class="btn btn-primary" id="intro-skip">进入序幕 →</button>
+    </div>
+  </div>
+
+  <!-- 结局 / 失败 全屏 -->
+  <div id="outcome" class="fullscreen outcome" hidden>
+    <div class="outcome-inner">
+      <div class="outcome-stamp" id="outcome-stamp">败</div>
+      <div class="outcome-kind" id="outcome-kind">临时结局</div>
+      <h2 class="outcome-title" id="outcome-title"></h2>
+      <div class="outcome-body" id="outcome-body"></div>
+      <div class="outcome-actions" id="outcome-actions"></div>
+    </div>
+  </div>
+
+  <!-- 菜单（底部抽屉） -->
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-mask" data-close></div>
+    <div class="sheet-panel">
+      <div class="sheet-title">菜单</div>
+      <div class="sheet-list" id="sheet-list"></div>
+      <button class="sheet-cancel" data-close>取消</button>
+    </div>
+  </div>
+
+  <!-- 通用弹窗 -->
+  <div id="modal" class="modal" hidden>
     <div class="modal-card">
-      <h2 class="modal-title" id="save-modal-title">存档</h2>
-      <div id="save-slots" class="save-slots"></div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" data-close>关 闭</button>
-      </div>
+      <div class="modal-title" id="modal-title"></div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-actions"><button class="btn btn-ghost" data-close>关闭</button></div>
     </div>
   </div>
-
-  <!-- 通用信息弹层（玩法/人物/路线） -->
-  <div id="info-modal" class="modal" hidden>
-    <div class="modal-card modal-wide">
-      <h2 class="modal-title" id="info-modal-title"></h2>
-      <div id="info-modal-body" class="info-body"></div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" data-close>关 闭</button>
-      </div>
-    </div>
-  </div>
-
-  <footer class="footnote">
-    <span>纯前端 · 存档存于浏览器本地 · AI 幕僚由 Cloudflare Worker 提供（未配置时自动降级）</span>
-  </footer>
 
   <script src="script.js"></script>
 </body>
