@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>盛宣怀的客厅</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
   <div class="app">
@@ -30,16 +30,13 @@
     </div>
   </div>
 
-  <!-- 选角 / 标题屏 -->
-  <div id="select" class="fullscreen">
-    <div class="select-inner">
-      <div class="select-seal">盛</div>
-      <h1 class="select-title">盛宣怀的客厅</h1>
-      <div class="select-sub">三厂合并 · 1898—1908</div>
-      <p class="select-hint">选择你的角色（剧情仍按盛宣怀的历史主线推进）</p>
-      <div class="select-grid" id="select-grid"></div>
-      <div class="select-actions">
-        <button class="btn btn-primary" id="select-confirm">进入游戏</button>
+  <!-- 封面 -->
+  <div id="select" class="fullscreen cover">
+    <div class="cover-inner">
+      <img class="cover-title-img" src="img/title.jpg" alt="盛宣怀的客厅" />
+      <img class="cover-chair-img" src="img/chair.jpg" alt="木椅" />
+      <div class="cover-actions">
+        <button class="btn-enter" id="select-confirm">进入游戏</button>
       </div>
     </div>
   </div>
@@ -90,6 +87,7 @@
     </div>
   </div>
 
-  <script src="script.js"></script>
+  <script src="lib/mermaid.min.js"></script>
+  <script src="script.js?v=7"></script>
 </body>
 </html>

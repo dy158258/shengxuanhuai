@@ -4,7 +4,7 @@
  * 职责：
  *  1. 托管前端静态文件（frontend/、data/、根目录跳转页）
  *  2. 提供 POST /api/ai —— 接收玩家自由输入的「决策意图」，调用
- *     百度千帆 AppBuilder 智能体：判断意图匹配哪个选项 + 生成盛宣怀口吻的「优化说辞」
+ *     百度千帆 AppBuilder 智能体：判断玩家输入匹配哪个选项（匹配则推进，不匹配则提醒重输）
  *
  * 部署（云服务器 VPS）：
  *   1. 安装 Node.js（18+）
@@ -38,7 +38,7 @@ app.use("/data", express.static(path.join(ROOT, "data")));
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 /* ---------- 调用千帆 AppBuilder 智能体 ---------- */
-async function callAppBuilder(env, prompt) {
+async function callAppBuilder(env, { current_node, rawQuery }) {
   const base = (env.BAIDU_API_BASE || "https://qianfan.baidubce.com").replace(/\/+$/, "");
   const key = env.BAIDU_API_KEY;
   const appId = env.BAIDU_APP_ID;
@@ -55,17 +55,26 @@ async function callAppBuilder(env, prompt) {
   const conversationId = cData.conversation_id;
   if (!conversationId) throw new Error("未返回 conversation_id：" + JSON.stringify(cData).slice(0, 200));
 
-  // ② 发送消息
+  // ② 发送消息（按智能体的两个输入变量 current_node / rawQuery 传参）
   const rRes = await fetch(base + "/v2/app/conversation/runs", {
     method: "POST",
     headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
-    body: JSON.stringify({ conversation_id: conversationId, query: prompt, stream: false })
+    body: JSON.stringify({
+      app_id: appId,
+      query: rawQuery,
+      conversation_id: conversationId,
+      stream: false,
+      input: {
+        current_node: current_node || "",
+        rawQuery: rawQuery || ""
+      }
+    })
   });
   if (!rRes.ok) throw new Error("对话失败 HTTP " + rRes.status + ": " + (await rRes.text()).slice(0, 200));
   const rData = await rRes.json();
 
   // ③ 提取回答（兼容多种字段名）
-  let answer = rData.answer || rData.content || rData.result || rData.output_text || "";
+  let answer = rData.output || rData.answer || rData.content || rData.result || rData.output_text || "";
   if (!answer && Array.isArray(rData.choices) && rData.choices[0]) {
     answer = rData.choices[0].message && rData.choices[0].message.content
       ? rData.choices[0].message.content
@@ -75,41 +84,16 @@ async function callAppBuilder(env, prompt) {
   return String(answer);
 }
 
-/* ---------- 组装提示词 ---------- */
-function buildPrompt({ intent, nodeTitle, situation, options, corpus }) {
-  const optLines = (options || []).map((o, i) => String.fromCharCode(65 + i) + ". " + o).join("\n");
-  const corpusLines = (corpus || []).map((c, i) => (i + 1) + ". " + c).join("\n");
-  return [
-    "【当前场景】" + (nodeTitle || "未知"),
-    "【场景局势】" + String(situation || "").slice(0, 400),
-    "",
-    "【可选的三条路】",
-    optLines,
-    "",
-    "玩家（扮演盛宣怀）用自己的话写了一段决策意图。请你完成两件事：",
-    "1. 判断这段意图最接近上面哪一条路（只回答 A / B / C 之一）；",
-    "2. 参考盛宣怀的书信文风，把玩家的意图润色成一段「优化说辞」——符合盛宣怀口吻的奏折/书信体文言，并附一句白话翻译。",
-    "",
-    "【盛宣怀书信文风范例（语料）】",
-    corpusLines,
-    "",
-    "玩家意图：" + intent,
-    "",
-    "请严格按如下格式回复（不要多余的话）：",
-    "匹配：A",
-    "优化说辞：<文言正文>",
-    "白话：<白话翻译>"
-  ].join("\n");
-}
-
 function parseAnswer(text) {
-  const matched = (text.match(/匹配[：:]\s*([A-C])/) || [])[1] || null;
-  const wording = (text.match(/优化说辞[：:]\s*([\s\S]*?)(?=白话[：:]|$)/) || [])[1] || "";
-  const vernacular = (text.match(/白话[：:]\s*([\s\S]*)/) || [])[1] || "";
+  const lines = String(text).split("\n").map((l) => l.trim()).filter(Boolean);
+  const first = lines[0] || "";
+  const m = first.match(/匹配[：:]\s*([A-C无])/);
+  const rawMatch = m ? m[1] : null;
+  const matched = (rawMatch && rawMatch !== "无") ? rawMatch : null;
+  const advice = matched ? "" : lines.slice(1).join("\n").trim();
   return {
     matched,
-    wording: String(wording).trim(),
-    vernacular: String(vernacular).trim(),
+    advice,
     raw: text
   };
 }
@@ -117,10 +101,9 @@ function parseAnswer(text) {
 /* ---------- AI 接口 ---------- */
 app.post("/api/ai", async (req, res) => {
   try {
-    const { intent, nodeTitle, situation, options, corpus } = req.body || {};
-    if (!intent || !String(intent).trim()) return res.status(400).json({ error: "empty intent" });
-    const prompt = buildPrompt({ intent: String(intent).trim(), nodeTitle, situation, options, corpus });
-    const answer = await callAppBuilder(process.env, prompt);
+    const { current_node, query } = req.body || {};
+    if (!query || !String(query).trim()) return res.status(400).json({ error: "empty query" });
+    const answer = await callAppBuilder(process.env, { current_node, rawQuery: String(query).trim() });
     res.json(parseAnswer(answer));
   } catch (e) {
     res.status(500).json({ error: String((e && e.message) || e) });

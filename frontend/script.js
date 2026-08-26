@@ -49,7 +49,6 @@ const CHAPTERS = {
 
 let DATA = null;
 let state = null;
-let selectedAvatar = "盛宣怀";
 
 /* ============================ 工具 ============================ */
 
@@ -194,10 +193,10 @@ function typeInto(el, html, onDone) {
   el.textContent = "";
   let i = 0;
   typeTimer = setInterval(() => {
-    i = Math.min(text.length, i + 2);
+    i = Math.min(text.length, i + 1);
     el.textContent = text.slice(0, i);
     if (i >= text.length) completeType();
-  }, 22);
+  }, 42);
 }
 function completeType() {
   if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
@@ -231,7 +230,7 @@ function revealNext() {
     runner.typing = false;
     if (runner.idx < runner.msgs.length) {
       showHint();
-      autoTimer = setTimeout(() => { if (!runner.typing && runner.idx < runner.msgs.length) revealNext(); }, m.delay || 820);
+      autoTimer = setTimeout(() => { if (!runner.typing && runner.idx < runner.msgs.length) revealNext(); }, m.delay || 1500);
     } else {
       hideHint();
       autoTimer = setTimeout(showFooter, 260);
@@ -361,6 +360,7 @@ function updatePlayerAvatar() {
 
 function render() {
   hideHint();
+  document.querySelector(".app").classList.remove("is-hidden");
   switch (state.phase) {
     case "background": renderBackground(); break;
     case "prologue": renderPrologue(); break;
@@ -581,26 +581,13 @@ function showSelect() {
   state = freshState();
   hideOutcome();
   document.getElementById("select").hidden = false;
-  const grid = document.getElementById("select-grid");
-  grid.innerHTML = "";
-  DATA.characters.forEach((c) => {
-    const a = AVATARS[c.name] || { char: c.name.slice(0, 1), color: "#9b8a6b" };
-    const el = document.createElement("div");
-    el.className = "select-char" + (c.name === selectedAvatar ? " sel" : "");
-    el.innerHTML = '<div class="avatar" style="background:' + a.color + '">' + escapeHtml(a.char) + '</div><div class="cname">' + escapeHtml(c.name) + "</div>";
-    el.onclick = () => {
-      selectedAvatar = c.name;
-      grid.querySelectorAll(".select-char").forEach((x) => x.classList.remove("sel"));
-      el.classList.add("sel");
-    };
-    grid.appendChild(el);
-  });
   document.getElementById("select-confirm").onclick = startGame;
+  document.querySelector(".app").classList.add("is-hidden");
 }
 
 function startGame() {
   state = freshState();
-  state.avatar = selectedAvatar;
+  state.avatar = "盛宣怀";
   state.phase = "prologue";
   document.getElementById("select").hidden = true;
   updatePlayerAvatar();
@@ -622,8 +609,8 @@ function showIntro() {
 
 function aiInputBar() {
   return '<div class="ai-row">' +
-    '<textarea class="ai-input" id="ai-input" rows="1" placeholder="写下你的决策意图，AI 帮你润色成盛宣怀口吻…"></textarea>' +
-    '<button class="btn-send" id="ai-send">润色</button>' +
+    '<textarea class="ai-input" id="ai-input" rows="1" placeholder="写下你的决策想法，AI 判断对应哪条路…"></textarea>' +
+    '<button class="btn-send" id="ai-send">判断</button>' +
     "</div>";
 }
 
@@ -642,8 +629,16 @@ function bindAI(node) {
     typing.remove();
     if (r.source === "fallback") {
       appendAdvisorBubble(r.reply, r.note);
+    } else if (r.matched) {
+      const opt = node.options.find((o) => o.letter === r.matched);
+      if (opt) {
+        appendLive(sysMsg("（你的想法最接近选项 " + r.matched + "）"));
+        setTimeout(() => onSelectOption(node, opt), 450);
+      } else {
+        appendAdvisorBubble(r.advice || "未能判断，请换个说法。", null);
+      }
     } else {
-      appendOptimized(r);
+      appendAdvisorBubble(r.advice || "你的想法与三条路都不太相符，请重新表述。", null);
     }
     state.aiLog = state.aiLog || [];
     state.aiLog.push({ role: "player", text: msg });
@@ -658,14 +653,6 @@ function appendPlayerBubble(text) { appendLive({ side: "right", avatar: state.av
 function appendAdvisorBubble(html, note) {
   appendLive({ side: "left", avatar: "郑观应", name: "郑观应", kind: "text", html: '<div class="prose">' + renderMarkdown([html]) + "</div>" });
   if (note) appendLive(sysMsg(note));
-}
-function appendOptimized(r) {
-  if (r.wording) {
-    const html = String(r.wording).split("\n").filter(Boolean).map(inlineMd).join("<br>");
-    appendLive({ side: "left", avatar: "书札", name: "盛宣怀 · 优化说辞", kind: "letter", html: html });
-  }
-  if (r.vernacular) appendLive(sysMsg("白话：" + r.vernacular));
-  if (r.matched) appendLive(sysMsg("此意最接近选项 " + r.matched));
 }
 function appendTyping() {
   const a = AVATARS["郑观应"];
@@ -685,28 +672,10 @@ function appendLive(m) {
   scrollBody();
 }
 
-/* 收集盛宣怀本人的书信引语作为「语料」，供 AI 参考文风 */
-function buildCorpus() {
-  const quotes = [];
-  for (const n of DATA.nodes) {
-    for (const o of (n.options || [])) {
-      for (const line of (o.write || [])) {
-        const s = String(line).replace(/^>\s?/, "").trim();
-        if (s.indexOf("「") === 0 && s.length < 90) quotes.push(s);
-      }
-    }
-  }
-  const seen = new Set();
-  return quotes.filter((q) => (seen.has(q) ? false : (seen.add(q), true))).slice(0, 6);
-}
-
 async function askAI(message, node) {
   const payload = {
-    intent: message,
-    nodeTitle: node.title,
-    situation: node.situation.join("\n"),
-    options: (node.options || []).map((o) => o.title),
-    corpus: buildCorpus()
+    current_node: node.id,
+    query: message
   };
   try {
     const res = await fetch(AI_BACKEND, {
@@ -716,7 +685,7 @@ async function askAI(message, node) {
     });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
-    if (data && (data.wording || data.raw)) return Object.assign({ source: "ai" }, data);
+    if (data && data.raw) return Object.assign({ source: "ai" }, data);
     throw new Error("no reply");
   } catch (e) {
     return { source: "fallback", reply: fallbackReply(node, message), note: "AI 后端未接入或调用失败，已使用预设回应。" };
@@ -817,9 +786,11 @@ function confirmDialog(msg, yesLabel, noLabel) {
 
 function showRules() {
   const r = DATA.rules;
-  const items = r.items.map((it) => "<p>" + inlineMd(it) + "</p>").join("");
+  const sections = (r.sections || []).map((s) =>
+    '<h3>' + escapeHtml(s.title) + '</h3><div class="prose">' + s.items.map((it) => "<p>" + inlineMd(it) + "</p>").join("") + "</div>"
+  ).join("");
   const markers = r.markers.map((m) => "<tr><td><strong>" + escapeHtml(m.symbol + " " + m.label) + "</strong></td><td>" + escapeHtml(m.desc) + "</td></tr>").join("");
-  openModal("玩法说明", '<div class="prose">' + items + '</div><table class="marker-table"><thead><tr><th>标识</th><th>含义</th></tr></thead><tbody>' + markers + "</tbody></table>");
+  openModal("玩法说明", sections + '<table class="marker-table"><thead><tr><th>标识</th><th>含义</th></tr></thead><tbody>' + markers + "</tbody></table>");
 }
 function showCast() {
   const cards = DATA.characters.map((c) =>
@@ -839,8 +810,28 @@ function showRoute() {
 function showBackgroundInfo() {
   const bg = DATA.background;
   const tl = bg.timeline.map((t) => '<div class="tl-row"><span class="tl-year">' + escapeHtml(t.year) + "</span><span>" + escapeHtml(t.event) + "</span></div>").join("");
+  const mermaidCode = bg.mermaid || bg.relations;
   openModal("时代背景", '<div class="prose">' + renderMarkdown(bg.text) + '</div><div class="timeline">' + tl + "</div>" +
-    '<pre class="relations">' + escapeHtml(bg.relations) + "</pre>");
+    '<h3>角色关系速查图</h3><div id="mermaid-box" class="mermaid-box"></div>');
+  renderMermaid(mermaidCode, document.getElementById("mermaid-box"));
+}
+
+function renderMermaid(code, box) {
+  if (!box) return;
+  if (!window.mermaid) {
+    box.innerHTML = '<pre class="relations">' + escapeHtml(code) + "</pre>";
+    return;
+  }
+  try {
+    window.mermaid.initialize({ startOnLoad: false, theme: "base" });
+    window.mermaid.render("m-" + Date.now(), code).then((r) => {
+      box.innerHTML = r.svg;
+    }).catch(() => {
+      box.innerHTML = '<pre class="relations">' + escapeHtml(code) + "</pre>";
+    });
+  } catch (e) {
+    box.innerHTML = '<pre class="relations">' + escapeHtml(code) + "</pre>";
+  }
 }
 
 /* ============================ 绑定 / 启动 ============================ */
