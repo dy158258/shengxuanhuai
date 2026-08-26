@@ -55,18 +55,15 @@ async function callAppBuilder(env, { current_node, rawQuery }) {
   const conversationId = cData.conversation_id;
   if (!conversationId) throw new Error("未返回 conversation_id：" + JSON.stringify(cData).slice(0, 200));
 
-  // ② 发送消息（按智能体的两个输入变量 current_node / rawQuery 传参）
+  // ② 发送消息（工作流自定义参数靠大模型从 query 提取，所以把节点ID拼进 query）
   const rRes = await fetch(base + "/v2/app/conversation/runs", {
     method: "POST",
     headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
     body: JSON.stringify({
       app_id: appId,
-      query: rawQuery,
+      query: "当前节点：" + (current_node || "") + "\n玩家输入：" + rawQuery,
       conversation_id: conversationId,
-      stream: false,
-      input: {
-        current_node: current_node || ""
-      }
+      stream: false
     })
   });
   if (!rRes.ok) throw new Error("对话失败 HTTP " + rRes.status + ": " + (await rRes.text()).slice(0, 200));
