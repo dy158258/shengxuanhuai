@@ -65,8 +65,7 @@ async function callAppBuilder(env, { current_node, rawQuery }) {
       conversation_id: conversationId,
       stream: false,
       input: {
-        current_node: current_node || "",
-        rawQuery: rawQuery || ""
+        current_node: current_node || ""
       }
     })
   });
