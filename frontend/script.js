@@ -12,6 +12,9 @@ const AI_BACKEND = "/api/ai";
 
 const STORAGE_PREFIX = "sxh_save_";
 const SLOT_COUNT = 3;
+const AUTO_KEY = STORAGE_PREFIX + "auto";
+let IMMERSION_AUTO = true;
+let immAutoTimer = null;
 
 /* 角色头像：古典配色 + 代表字 */
 const AVATARS = {
@@ -91,6 +94,7 @@ function getEnding(id) { return DATA.endings[id] || null; }
 function freshState() {
   return {
     phase: "select",     // select | background | prologue | node | interlude | ending
+    mode: "negotiation", // negotiation（模拟谈判）| immersion（剧情沉浸）
     avatar: "盛宣怀",
     nodeId: null,
     optionId: null,
@@ -115,6 +119,8 @@ function stateDesc(s) {
 
 /* ============================ 存档 ============================ */
 
+function modeLabel() { return state.mode === "immersion" ? "剧情沉浸" : "模拟谈判"; }
+
 function readSlots() {
   const slots = [];
   for (let i = 0; i < SLOT_COUNT; i++) {
@@ -126,7 +132,13 @@ function readSlots() {
 function writeSlot(i, data) { localStorage.setItem(STORAGE_PREFIX + i, JSON.stringify(data)); }
 function deleteSlot(i) { localStorage.removeItem(STORAGE_PREFIX + i); }
 function doSave(i) {
-  const snap = { name: "存档 " + (i + 1), time: formatNow(), desc: stateDesc(state), state: JSON.parse(JSON.stringify(state)) };
+  const snap = {
+    name: modeLabel() + " · " + stateDesc(state),
+    time: formatNow(),
+    desc: stateDesc(state),
+    mode: state.mode || "negotiation",
+    state: JSON.parse(JSON.stringify(state))
+  };
   writeSlot(i, snap);
 }
 function doLoad(i) {
@@ -135,12 +147,31 @@ function doLoad(i) {
   try {
     const snap = JSON.parse(raw);
     state = snap.state || freshState();
+    state.mode = state.mode || "negotiation";
     closeModal();
     document.getElementById("select").hidden = true;
+    document.getElementById("catalog").hidden = true;
     updatePlayerAvatar();
     render();
   } catch (e) { alert("存档读取失败：" + e.message); }
 }
+function autosave() {
+  if (!state || state.phase === "select" || state.phase === "background") return;
+  const snap = {
+    name: "自动存档",
+    time: formatNow(),
+    desc: modeLabel() + " · " + stateDesc(state),
+    mode: state.mode || "negotiation",
+    state: JSON.parse(JSON.stringify(state))
+  };
+  try { localStorage.setItem(AUTO_KEY, JSON.stringify(snap)); } catch (e) {}
+}
+function readAuto() {
+  try { const raw = localStorage.getItem(AUTO_KEY); return raw ? JSON.parse(raw) : null; }
+  catch (e) { return null; }
+}
+function isCleared(mode) { try { return localStorage.getItem("sxh_cleared_" + mode) === "1"; } catch (e) { return false; } }
+function markCleared(mode) { try { localStorage.setItem("sxh_cleared_" + mode, "1"); } catch (e) {} }
 function formatNow() {
   const d = new Date(), p = (x) => String(x).padStart(2, "0");
   return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
@@ -360,11 +391,14 @@ function updatePlayerAvatar() {
 
 function render() {
   hideHint();
+  clearTimeout(immAutoTimer);
   document.querySelector(".app").classList.remove("is-hidden");
+  autosave();
+  updateImmAuto();
   switch (state.phase) {
     case "background": renderBackground(); break;
     case "prologue": renderPrologue(); break;
-    case "node": renderNode(); break;
+    case "node": state.mode === "immersion" ? renderImmersionNode() : renderNode(); break;
     case "interlude": renderInterlude(); break;
     case "ending": renderEnding(); break;
     default: showSelect();
@@ -399,7 +433,7 @@ function renderPrologue() {
       render();
     }; }
   };
-  renderMessages(msgs, footer.html, footer.bind);
+  renderMessages(msgs, footer.html, footer.bind, immersionAutoComplete());
 }
 
 function renderInterlude() {
@@ -420,7 +454,7 @@ function renderInterlude() {
       render();
     }; }
   };
-  renderMessages(msgs, footer.html, footer.bind);
+  renderMessages(msgs, footer.html, footer.bind, immersionAutoComplete());
 }
 
 function renderNode() {
@@ -514,10 +548,86 @@ function onSelectOption(node, opt) {
   } else commit();
 }
 
+function getHistoryOption(node) {
+  return node.options.find((o) => o.marker === "history") || node.options[0];
+}
+
+function finishImmersion(msgs, footer) {
+  renderMessages(msgs, footer.html, footer.bind, () => {
+    if (IMMERSION_AUTO) {
+      clearTimeout(immAutoTimer);
+      immAutoTimer = setTimeout(() => { if (footer.auto) footer.auto(); }, 2600);
+    }
+  });
+}
+
+function immersionAutoComplete() {
+  if (state.mode !== "immersion" || !IMMERSION_AUTO) return null;
+  return () => {
+    clearTimeout(immAutoTimer);
+    immAutoTimer = setTimeout(() => {
+      const btn = document.querySelector("#chat-footer .btn");
+      if (btn) btn.click();
+    }, 2600);
+  };
+}
+
+function renderImmersionNode() {
+  const node = getNode(state.nodeId);
+  if (!node) { showCatalog(); return; }
+  setHeader(node.title, "剧情沉浸 · " + node.time);
+  const msgs = [];
+  const ch = chapterMsg(node.id);
+  if (ch) msgs.push(ch);
+  msgs.push(...narratorMsgs(node.situation));
+
+  if (!node.options.length) {
+    const onNext = () => { state.phase = "ending"; state.endingId = "A"; render(); };
+    finishImmersion(msgs, {
+      html: '<div class="cta-row"><button class="btn btn-primary" id="imm-next">查看终局结算</button></div>',
+      bind: () => { document.getElementById("imm-next").onclick = () => { clearTimeout(immAutoTimer); onNext(); }; },
+      auto: onNext
+    });
+    return;
+  }
+
+  const opt = getHistoryOption(node);
+  msgs.push(sysMsg("—— 史实抉择 · 盛宣怀 ——"));
+  msgs.push(choiceMsg(opt.title));
+  msgs.push(...writeMsgs(opt.write));
+  msgs.push(...advisorMsgs(opt.advisor));
+
+  let onNext;
+  if (opt.resultType === "advance") {
+    const adv = opt.advance;
+    if (adv.note) msgs.push(sysMsg(adv.note.replace(/\*\*/g, "")));
+    if (adv.text && adv.text.length) msgs.push(...narratorMsgs(adv.text));
+    onNext = () => {
+      const nx = adv.next;
+      if (nx && nx.indexOf("interlude-") === 0) { state.phase = "interlude"; state.interludeId = nx; state.sceneIndex = 0; }
+      else if (nx && nx.indexOf("node") === 0) { state.phase = "node"; state.nodeId = nx; }
+      render();
+    };
+  } else if (opt.resultType === "ending") {
+    msgs.push(sysMsg(opt.endingNarrative.title.replace(/^■\s*/, "")));
+    msgs.push(...narratorMsgs(opt.endingNarrative.text));
+    onNext = () => { state.phase = "ending"; state.endingId = opt.endingId; render(); };
+  } else {
+    onNext = () => { showCatalog(); };
+  }
+
+  finishImmersion(msgs, {
+    html: '<div class="cta-row"><button class="btn btn-primary" id="imm-next">继续 →</button></div>',
+    bind: () => { document.getElementById("imm-next").onclick = () => { clearTimeout(immAutoTimer); onNext(); }; },
+    auto: onNext
+  });
+}
+
 function renderEnding() {
   const e = getEnding(state.endingId);
-  if (!e) { showSelect(); return; }
+  if (!e) { showCatalog(); return; }
   const isA = e.id === "A";
+  if (isA) markCleared(state.mode);
   showOutcome({
     stamp: isA ? "成" : "覆",
     kind: "终局 · " + e.basisLabel,
@@ -527,7 +637,7 @@ function renderEnding() {
       '<div class="outcome-route">达成路径：' + escapeHtml(e.route) + '</div>' +
       '<div class="outcome-basis">历史依据说明：' + escapeHtml(e.basis) + '</div>',
     actions: [
-      ["重新开始", "btn-primary", showSelect],
+      ["返回目录", "btn-primary", showCatalog],
       ["历史对照", "", showHistory],
       ["结局路线表", "", showRoute]
     ]
@@ -581,17 +691,31 @@ function showSelect() {
   state = freshState();
   hideOutcome();
   document.getElementById("select").hidden = false;
-  document.getElementById("select-confirm").onclick = startGame;
+  document.getElementById("select-confirm").onclick = showCatalog;
   document.querySelector(".app").classList.add("is-hidden");
 }
 
-function startGame() {
+function startNegotiation() {
   state = freshState();
+  state.mode = "negotiation";
   state.avatar = "盛宣怀";
   state.phase = "prologue";
-  document.getElementById("select").hidden = true;
+  document.getElementById("catalog").hidden = true;
   updatePlayerAvatar();
   showIntro();
+}
+function startImmersion() {
+  state = freshState();
+  state.mode = "immersion";
+  state.avatar = "盛宣怀";
+  state.phase = "prologue";
+  document.getElementById("catalog").hidden = true;
+  updatePlayerAvatar();
+  showIntro();
+}
+function restartMode() {
+  if (state.mode === "immersion") startImmersion();
+  else startNegotiation();
 }
 
 function showIntro() {
@@ -603,6 +727,112 @@ function showIntro() {
     state.phase = "prologue"; state.sceneIndex = 0;
     render();
   };
+}
+
+/* ============================ 目录 ============================ */
+
+const CATALOG_ITEMS = [
+  { id: "negotiation", chapter: "模拟谈判", tag: "谈判", tagClass: "seal", title: "三厂合并 · 十年经营", subtitle: "六个决策场景 · 七种结局", tagline: "自由表达 · AI辅助 · 上桌博弈", desc: "扮演盛宣怀，与对手当面博弈。用你自己的话谈条件，AI幕僚会为你递上锦囊。", locked: false, onEnter: startNegotiation },
+  { id: "immersion", chapter: "剧情沉浸", tag: "剧情", tagClass: "brown", title: "汉冶萍十年风云", subtitle: "沿史实方向 · 自动展卷", tagline: "无抉择 · 无AI · 静观史实", desc: "进入一段真实历史故事。剧情沿盛宣怀的真实抉择自动展开，静观十年兴衰。", locked: false, onEnter: startImmersion },
+  { id: "preview", chapter: "更新预告", tag: "筹备中", tagClass: "gray", title: "新章筹备中", subtitle: "轮船招商局收购旗昌案", tagline: "敬请期待", desc: "", locked: true },
+  { id: "manual", chapter: "玩家手册", tag: "手册", tagClass: "gray", title: "玩法 · 人物 · 背景", subtitle: "常驻入口", tagline: "", desc: "", locked: false, onEnter: openManual }
+];
+
+function showCatalog() {
+  hideOutcome();
+  document.getElementById("select").hidden = true;
+  document.getElementById("intro").hidden = true;
+  document.getElementById("catalog").hidden = false;
+  document.querySelector(".app").classList.add("is-hidden");
+  renderCatalog();
+}
+
+function renderCatalog() {
+  const list = document.getElementById("catalog-list");
+  list.innerHTML = "";
+  const resume = document.getElementById("catalog-resume");
+  const auto = readAuto();
+  if (auto) {
+    resume.innerHTML = '<button class="catalog-resume-btn" id="catalog-resume-btn">继续上次进度<span>' + escapeHtml(auto.desc || "") + '</span></button>';
+    resume.style.display = "block";
+    document.getElementById("catalog-resume-btn").onclick = () => doLoadAuto(auto);
+  } else {
+    resume.innerHTML = "";
+    resume.style.display = "none";
+  }
+
+  CATALOG_ITEMS.forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "catalog-card" + (item.locked ? " locked" : "");
+    const cleared = !item.locked && isCleared(item.id);
+    card.innerHTML =
+      '<div class="card-bar">' +
+        '<span class="card-chapter">' + escapeHtml(item.chapter) + '</span>' +
+        '<span class="card-tag ' + escapeHtml(item.tagClass) + '">' + escapeHtml(item.tag) + '</span>' +
+        (cleared ? '<span class="card-clear">阅</span>' : '') +
+      '</div>' +
+      '<div class="card-body"><div class="card-inner">' +
+        '<div class="card-title">' + escapeHtml(item.title) + '</div>' +
+        '<div class="card-subtitle">' + escapeHtml(item.subtitle) + '</div>' +
+        (item.tagline ? '<div class="card-tagline">' + escapeHtml(item.tagline) + '</div>' : '') +
+        (item.desc ? '<div class="card-desc">' + escapeHtml(item.desc) + '</div>' : '') +
+        (item.locked ? '' : '<button class="card-enter ' + (item.tagClass === "brown" ? "brown" : "") + '">进入</button>') +
+      '</div></div>';
+    card.querySelector(".card-bar").onclick = () => {
+      if (item.locked) { shakeCard(card); return; }
+      const wasOpen = card.classList.contains("open");
+      document.querySelectorAll(".catalog-card.open").forEach((c) => c.classList.remove("open"));
+      if (!wasOpen) card.classList.add("open");
+    };
+    const enter = card.querySelector(".card-enter");
+    if (enter) enter.onclick = () => { if (item.onEnter) item.onEnter(); };
+    list.appendChild(card);
+  });
+}
+
+function doLoadAuto(snap) {
+  if (!snap) return;
+  state = snap.state || freshState();
+  state.mode = state.mode || "negotiation";
+  document.getElementById("catalog").hidden = true;
+  updatePlayerAvatar();
+  render();
+}
+
+function openManual() {
+  const body = '<div class="manual-entries">' +
+    '<button class="btn manual-entry" id="manual-rules">玩法说明</button>' +
+    '<button class="btn manual-entry" id="manual-cast">人物志</button>' +
+    '<button class="btn manual-entry" id="manual-bg">时代背景</button></div>';
+  openModal("玩家手册", body);
+  document.getElementById("manual-rules").onclick = () => { closeModal(); showRules(); };
+  document.getElementById("manual-cast").onclick = () => { closeModal(); showCast(); };
+  document.getElementById("manual-bg").onclick = () => { closeModal(); showBackgroundInfo(); };
+}
+
+function shakeCard(card) {
+  card.classList.remove("shake");
+  void card.offsetWidth;
+  card.classList.add("shake");
+  toast("新章筹备中 · 敬请期待");
+}
+
+function toast(msg) {
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = msg;
+  document.body.appendChild(t);
+  requestAnimationFrame(() => t.classList.add("show"));
+  setTimeout(() => { t.classList.remove("show"); setTimeout(() => t.remove(), 320); }, 1600);
+}
+
+function updateImmAuto() {
+  const b = document.getElementById("imm-auto");
+  if (!b) return;
+  const show = state && state.mode === "immersion" && state.phase !== "select";
+  b.hidden = !show;
+  b.textContent = IMMERSION_AUTO ? "自动 ▸" : "手动 ▸";
+  b.classList.toggle("off", !IMMERSION_AUTO);
 }
 
 /* ============================ AI 幕僚 ============================ */
@@ -705,12 +935,13 @@ function openSheet() {
   const items = [
     ["保存游戏", () => openSave("save")],
     ["读取存档", () => openSave("load")],
+    ["返回目录", () => showCatalog()],
     ["时代背景", showBackgroundInfo],
     ["玩法说明", showRules],
     ["人物志", showCast],
     ["历史对照", showHistory],
     ["结局路线表", showRoute],
-    ["重新开始", () => confirmDialog("确定要放弃当前进度，重新开始吗？", "重新开始", "取消").then((ok) => { if (ok) showSelect(); })]
+    ["重新开始", () => confirmDialog("确定要放弃当前进度，重新开始吗？", "重新开始", "取消").then((ok) => { if (ok) restartMode(); })]
   ];
   const list = document.getElementById("sheet-list");
   list.innerHTML = "";
@@ -736,34 +967,38 @@ function closeModal() { document.getElementById("modal").hidden = true; }
 
 function openSave(mode) {
   const slots = readSlots();
-  const box = document.createElement("div");
-  box.className = "save-slots";
+  const title = mode === "save" ? "保存游戏" : "读取存档";
+  let html = '<div class="save-slots">';
   slots.forEach((s, i) => {
-    const div = document.createElement("div");
-    div.className = "save-slot" + (s ? "" : " empty");
     if (s) {
-      div.innerHTML = '<div class="slot-info"><div class="slot-name">' + escapeHtml(s.name) + "</div>" +
-        '<div class="slot-desc">' + escapeHtml(s.desc || "") + '</div><div class="slot-time">' + escapeHtml(s.time || "") + "</div></div><div class=\"slot-actions\"></div>";
-      const acts = div.querySelector(".slot-actions");
-      if (mode === "save") {
-        const b1 = document.createElement("button"); b1.className = "btn btn-ghost"; b1.textContent = "覆盖"; b1.onclick = () => { doSave(i); openSave("save"); };
-        acts.appendChild(b1);
-        const b2 = document.createElement("button"); b2.className = "btn btn-ghost"; b2.textContent = "删除"; b2.onclick = () => { deleteSlot(i); openSave("save"); };
-        acts.appendChild(b2);
-      } else {
-        const b1 = document.createElement("button"); b1.className = "btn"; b1.textContent = "读取"; b1.onclick = () => doLoad(i);
-        acts.appendChild(b1);
-      }
+      const modeName = s.mode === "immersion" ? "剧情沉浸" : "模拟谈判";
+      html += '<div class="save-slot">' +
+        '<div class="slot-info"><div class="slot-head"><span class="slot-name">' + escapeHtml(s.name) + '</span><span class="slot-mode">' + escapeHtml(modeName) + '</span></div>' +
+        '<div class="slot-desc">' + escapeHtml(s.desc || "") + '</div><div class="slot-time">' + escapeHtml(s.time || "") + '</div></div>' +
+        '<div class="slot-actions">' +
+        (mode === "save"
+          ? '<button class="btn btn-ghost" data-save="overwrite" data-slot="' + i + '">覆盖</button><button class="btn btn-ghost" data-save="delete" data-slot="' + i + '">删除</button>'
+          : '<button class="btn" data-save="load" data-slot="' + i + '">读取</button>') +
+        '</div></div>';
     } else {
-      div.innerHTML = '<span class="slot-info"><span class="slot-desc">（空存档位）</span></span><div class="slot-actions"></div>';
-      if (mode === "save") {
-        const b = document.createElement("button"); b.className = "btn"; b.textContent = "存到此处"; b.onclick = () => { doSave(i); openSave("save"); };
-        div.querySelector(".slot-actions").appendChild(b);
-      }
+      html += '<div class="save-slot empty"><span class="slot-info"><span class="slot-desc">（空存档位）</span></span><div class="slot-actions">' +
+        (mode === "save" ? '<button class="btn" data-save="new" data-slot="' + i + '">存到此处</button>' : '') +
+        '</div></div>';
     }
-    box.appendChild(div);
   });
-  openModal(mode === "save" ? "保存游戏" : "读取存档", box.outerHTML);
+  html += '</div>';
+  openModal(title, html);
+  // 关键：openModal 用 innerHTML 渲染会丢掉 DOM 上的 onclick，这里用 data-* 属性 + 重新绑定
+  document.querySelectorAll("#modal-body [data-save]").forEach((btn) => {
+    btn.onclick = () => {
+      const slot = Number(btn.getAttribute("data-slot"));
+      const action = btn.getAttribute("data-save");
+      if (action === "new") { doSave(slot); openSave(mode); }
+      else if (action === "overwrite") { confirmDialog("覆盖存档位 " + (slot + 1) + " 吗？原进度将被替换。", "覆盖", "取消").then((ok) => { if (ok) { doSave(slot); openSave(mode); } }); }
+      else if (action === "delete") { confirmDialog("删除存档位 " + (slot + 1) + " 吗？此操作不可恢复。", "删除", "取消").then((ok) => { if (ok) { deleteSlot(slot); openSave(mode); } }); }
+      else if (action === "load") { doLoad(slot); }
+    };
+  });
 }
 
 function confirmDialog(msg, yesLabel, noLabel) {
@@ -845,6 +1080,10 @@ function bindGlobals() {
   document.getElementById("hdr-avatar").onclick = openSheet;
   document.getElementById("chat-body").addEventListener("click", onBodyTap);
   document.getElementById("modal").addEventListener("click", (e) => { if (e.target === document.getElementById("modal")) closeModal(); });
+  const ia = document.getElementById("imm-auto");
+  if (ia) ia.onclick = () => { IMMERSION_AUTO = !IMMERSION_AUTO; clearTimeout(immAutoTimer); updateImmAuto(); };
+  const cb = document.getElementById("catalog-back");
+  if (cb) cb.onclick = () => { document.getElementById("catalog").hidden = true; showSelect(); };
   bindDataClose();
 }
 

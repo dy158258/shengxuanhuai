@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>盛宣怀的客厅</title>
-  <link rel="stylesheet" href="style.css?v=7" />
+  <link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body>
   <div class="app">
@@ -27,6 +27,9 @@
 
       <!-- 底部操作区 -->
       <footer class="chat-footer" id="chat-footer"></footer>
+
+      <!-- 剧情沉浸自动播放开关 -->
+      <button id="imm-auto" class="imm-auto" hidden>自动 ▸</button>
     </div>
   </div>
 
@@ -39,6 +42,24 @@
         <button class="btn-enter" id="select-confirm">进入游戏</button>
       </div>
     </div>
+  </div>
+
+  <!-- 目录 -->
+  <div id="catalog" class="fullscreen catalog" hidden>
+    <div class="catalog-scroll">
+      <div class="catalog-roller catalog-roller-top"></div>
+      <div class="catalog-paper">
+        <div class="catalog-head">
+          <div class="catalog-title">盛宣怀的客厅</div>
+          <div class="catalog-sub">三厂合并 · 1898—1908</div>
+        </div>
+        <div id="catalog-resume" class="catalog-resume"></div>
+        <div class="catalog-list" id="catalog-list"></div>
+        <div class="catalog-foot">· 展卷 ·</div>
+      </div>
+      <div class="catalog-roller catalog-roller-bottom"></div>
+    </div>
+    <button class="catalog-back" id="catalog-back">‹ 返回封面</button>
   </div>
 
   <!-- 片头卷轴 -->
@@ -88,6 +109,6 @@
   </div>
 
   <script src="lib/mermaid.min.js"></script>
-  <script src="script.js?v=7"></script>
+  <script src="script.js?v=9"></script>
 </body>
 </html>
